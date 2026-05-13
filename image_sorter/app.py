@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from . import settings
+from . import __version__, settings, updater
 from .bands import DEFAULT_PRESET_KEY, PRESETS, Band, Preset, preset_by_label
 from .sorter import (
     CollisionGroup,
@@ -148,15 +149,23 @@ class SorterApp:
         self.root.after(100, self._poll_queue)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # Kick off the update check shortly after launch so the window paints
+        # first; the check itself runs on a background thread and silently
+        # no-ops on any error.
+        self.root.after(750, self._start_update_check)
+
     # ---------- UI ----------
 
     def _build_ui(self) -> None:
         self.root.grid_columnconfigure(0, weight=1)
-        self.root.grid_rowconfigure(4, weight=1)
+        self.root.grid_rowconfigure(5, weight=1)  # log row
+
+        # ---- Update-available banner (row 0, ungridded until needed) ----
+        self._build_update_banner()
 
         # ---- Header ----
         header = ctk.CTkFrame(self.root, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 4))
+        header.grid(row=1, column=0, sticky="ew", padx=16, pady=(14, 4))
         header.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -181,7 +190,7 @@ class SorterApp:
 
         # ---- Input card ----
         input_card = self._make_card(self.root, "Input")
-        input_card.frame.grid(row=1, column=0, sticky="ew", padx=16, pady=8)
+        input_card.frame.grid(row=2, column=0, sticky="ew", padx=16, pady=8)
         body = input_card.body
         body.grid_columnconfigure(1, weight=1)
 
@@ -224,7 +233,7 @@ class SorterApp:
 
         # ---- Run card ----
         run_card = self._make_card(self.root, "Run")
-        run_card.frame.grid(row=2, column=0, sticky="ew", padx=16, pady=8)
+        run_card.frame.grid(row=3, column=0, sticky="ew", padx=16, pady=8)
         rbody = run_card.body
         rbody.grid_columnconfigure(3, weight=1)
 
@@ -269,7 +278,7 @@ class SorterApp:
 
         # ---- Progress + status ----
         prog_card = ctk.CTkFrame(self.root, fg_color="transparent")
-        prog_card.grid(row=3, column=0, sticky="ew", padx=16, pady=(4, 4))
+        prog_card.grid(row=4, column=0, sticky="ew", padx=16, pady=(4, 4))
         prog_card.grid_columnconfigure(0, weight=1)
 
         self.progress = ctk.CTkProgressBar(prog_card, height=14)
@@ -284,7 +293,7 @@ class SorterApp:
 
         # ---- Log card ----
         log_card = self._make_card(self.root, "Log")
-        log_card.frame.grid(row=4, column=0, sticky="nsew", padx=16, pady=(8, 16))
+        log_card.frame.grid(row=5, column=0, sticky="nsew", padx=16, pady=(8, 16))
         log_card.frame.grid_rowconfigure(1, weight=1)
         log_card.frame.grid_columnconfigure(0, weight=1)
         log_card.body.grid_rowconfigure(0, weight=1)
@@ -310,6 +319,97 @@ class SorterApp:
         c.frame = frame
         c.body = body
         return c
+
+    # ---------- Update banner ----------
+
+    def _build_update_banner(self) -> None:
+        """Create the (initially hidden) 'update available' banner widget."""
+        self.update_banner = ctk.CTkFrame(
+            self.root,
+            corner_radius=8,
+            fg_color=("#fff4d6", "#3e3315"),
+            border_width=1,
+            border_color=("#f0c875", "#7a5d2a"),
+        )
+        # NOT gridded here; we grid into row 0 only when an update is found.
+        inner = ctk.CTkFrame(self.update_banner, fg_color="transparent")
+        inner.pack(fill="x", padx=12, pady=8)
+
+        self._update_label = ctk.CTkLabel(
+            inner,
+            text="",
+            anchor="w",
+            text_color=("#664d03", "#ffe69c"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        self._update_label.pack(side="left", expand=True, fill="x")
+
+        ctk.CTkButton(
+            inner, text="Download", width=110,
+            command=self._open_update_url,
+        ).pack(side="left", padx=4)
+
+        ctk.CTkButton(
+            inner, text="Dismiss", width=90,
+            fg_color=("gray75", "gray30"), hover_color=("gray65", "gray40"),
+            text_color=("gray15", "gray90"),
+            command=self._dismiss_update_banner,
+        ).pack(side="left", padx=4)
+
+        self._update_info: dict | None = None
+
+    def _show_update_banner(self, info: dict) -> None:
+        self._update_info = info
+        self._update_label.configure(
+            text=(
+                f"  Update available: {info['tag_name']}  "
+                f"(you have v{__version__}) — click Download for the new EXE."
+            )
+        )
+        self.update_banner.grid(row=0, column=0, sticky="ew", padx=16, pady=(10, 0))
+
+    def _open_update_url(self) -> None:
+        url = (self._update_info or {}).get("html_url") or updater.RELEASES_PAGE_URL
+        try:
+            webbrowser.open(url, new=2)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _dismiss_update_banner(self) -> None:
+        if self._update_info:
+            stored = settings.load()
+            stored["dismissed_update_version"] = self._update_info["tag_name"]
+            settings.save(stored)
+        try:
+            self.update_banner.grid_forget()
+        except tk.TclError:
+            pass
+
+    def _start_update_check(self) -> None:
+        stored = settings.load()
+        if not updater.should_check(stored.get("update_check_at")):
+            return
+
+        def callback(info: dict | None) -> None:
+            # Worker thread — schedule UI work on the main thread.
+            self.root.after(0, self._on_update_check_result, info)
+
+        updater.check_async(callback)
+
+    def _on_update_check_result(self, info: dict | None) -> None:
+        # Record the attempt regardless so we don't retry until tomorrow.
+        stored = settings.load()
+        stored["update_check_at"] = datetime.now().isoformat(timespec="seconds")
+        settings.save(stored)
+
+        if info is None:
+            return
+
+        dismissed = stored.get("dismissed_update_version", "")
+        if dismissed and not updater.is_newer(info["tag_name"], dismissed):
+            return
+
+        self._show_update_banner(info)
 
     # ---------- State helpers ----------
 

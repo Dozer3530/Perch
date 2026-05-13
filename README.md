@@ -75,6 +75,11 @@ The output folder name is whatever you type — no forced prefix.
   parameter logs, etc.) is captured into a `Misc/` sibling folder with the
   source layout preserved. Especially important for MOVE mode so nothing gets
   stranded. Toggle off if you only want the band TIFFs.
+- **Auto-update check** — on launch, quietly checks GitHub Releases. If a
+  newer version is available, a yellow banner appears at the top of the
+  window with a Download button (opens the Releases page in your browser).
+  Checked at most once every 24 hours; "Dismiss" remembers the version so
+  it won't bother you again for that release.
 - Modern UI with light / dark / system theme (CustomTkinter).
 - Recursive scan — source layout doesn't have to match exactly.
 - **Copy** by default; **Move** is an opt-in checkbox with confirmation.

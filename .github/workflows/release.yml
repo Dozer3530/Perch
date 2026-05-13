@@ -21,6 +21,22 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Verify __version__ matches the git tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $content = Get-Content image_sorter/__init__.py -Raw
+          if ($content -match '__version__\s*=\s*"([^"]+)"') {
+            $version = "v" + $matches[1]
+            if ($tag -ne $version) {
+              throw "Tag $tag does not match image_sorter.__version__ ($version). Bump __version__ before tagging."
+            }
+            Write-Host "OK: tag $tag matches __version__ $version"
+          } else {
+            throw "Could not find __version__ in image_sorter/__init__.py"
+          }
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
