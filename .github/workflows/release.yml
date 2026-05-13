@@ -1,9 +1,12 @@
-name: Build & Release Windows EXE
+name: CI & Release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -42,6 +45,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest
 
       - name: Build EXE
         run: |
