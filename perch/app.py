@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from . import __version__, settings, updater
+from . import __version__, assets, settings, updater
 from .bands import DEFAULT_PRESET_KEY, PRESETS, Band, Preset, preset_by_label
 from .sorter import (
     CollisionGroup,
@@ -129,6 +129,9 @@ class SorterApp:
         self.root.geometry("920x720")
         self.root.minsize(780, 580)
 
+        # Window/titlebar/taskbar icon.
+        self._apply_window_icon()
+
         # state
         self.worker: threading.Thread | None = None
         self.cancel_event = threading.Event()
@@ -154,6 +157,32 @@ class SorterApp:
         # no-ops on any error.
         self.root.after(750, self._start_update_check)
 
+    # ---------- Window icon ----------
+
+    def _apply_window_icon(self) -> None:
+        """Set the titlebar/taskbar icon. Silently no-ops if assets are absent
+        or PIL/ImageTk aren't available."""
+        ico = assets.ico_path()
+        if ico is not None:
+            try:
+                self.root.iconbitmap(default=str(ico))
+                return
+            except tk.TclError:
+                pass  # fall through to PNG path
+
+        logo = assets.load_logo_square(256)
+        if logo is None:
+            return
+        try:
+            from PIL import ImageTk
+        except ImportError:
+            return
+        try:
+            self._iconphoto_ref = ImageTk.PhotoImage(logo)
+            self.root.iconphoto(True, self._iconphoto_ref)
+        except Exception:  # noqa: BLE001
+            pass
+
     # ---------- UI ----------
 
     def _build_ui(self) -> None:
@@ -166,17 +195,27 @@ class SorterApp:
         # ---- Header ----
         header = ctk.CTkFrame(self.root, fg_color="transparent")
         header.grid(row=1, column=0, sticky="ew", padx=16, pady=(14, 4))
-        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=1)
+
+        # Logo (perched bird) on the left, if available.
+        logo_pil = assets.load_logo_square(96)
+        if logo_pil is not None:
+            self._header_logo_img = ctk.CTkImage(
+                light_image=logo_pil, dark_image=logo_pil, size=(56, 56)
+            )
+            ctk.CTkLabel(header, image=self._header_logo_img, text="").grid(
+                row=0, column=0, rowspan=2, sticky="w", padx=(0, 14)
+            )
 
         ctk.CTkLabel(
-            header, text=APP_TITLE, font=ctk.CTkFont(size=22, weight="bold")
-        ).grid(row=0, column=0, sticky="w")
+            header, text=APP_TITLE, font=ctk.CTkFont(size=24, weight="bold")
+        ).grid(row=0, column=1, sticky="w")
         ctk.CTkLabel(
             header,
             text="Sort multi-band drone imagery into one folder per band.",
             font=ctk.CTkFont(size=12),
             text_color=("gray40", "gray70"),
-        ).grid(row=1, column=0, sticky="w")
+        ).grid(row=1, column=1, sticky="w")
 
         self.appearance_menu = ctk.CTkOptionMenu(
             header,
@@ -185,7 +224,7 @@ class SorterApp:
             command=self._on_appearance_change,
         )
         self.appearance_menu.set(self._stored.get("appearance", "System"))
-        self.appearance_menu.grid(row=0, column=1, rowspan=2, sticky="e", padx=(8, 0))
+        self.appearance_menu.grid(row=0, column=2, rowspan=2, sticky="e", padx=(8, 0))
         ctk.set_appearance_mode(self.appearance_menu.get())
 
         # ---- Input card ----

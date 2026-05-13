@@ -47,6 +47,9 @@ jobs:
         run: |
           pyinstaller --noconfirm --onefile --windowed `
             --name "Perch" `
+            --icon "assets/perch.ico" `
+            --add-data "assets/perch.png;assets" `
+            --add-data "assets/perch.ico;assets" `
             --collect-all customtkinter `
             run.py
 

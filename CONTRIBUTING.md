@@ -29,6 +29,18 @@ front-end or alternative GUI can be added without touching it.
 Open `perch/bands.py`, define a new `Preset` (suffix → `Band` dict), add it
 to the `PRESETS` registry. The GUI dropdown picks it up automatically.
 
+## Updating the logo
+
+The source-of-truth is `assets/perch.png`. The `.ico` used by PyInstaller
+is derived from it via:
+
+```
+python tools/build_assets.py
+```
+
+That regenerates `assets/perch.ico` at sizes 16/24/32/48/64/128/256. Commit
+both files together.
+
 ## Building the Windows EXE
 
 ```

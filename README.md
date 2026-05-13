@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/perch.png" alt="Perch logo" width="220">
+</p>
+
 # Perch
 
 [![Build & Release Windows EXE](https://github.com/Dozer3530/Perch/actions/workflows/release.yml/badge.svg)](https://github.com/Dozer3530/Perch/actions/workflows/release.yml)

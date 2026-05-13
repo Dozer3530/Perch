@@ -13,6 +13,9 @@ if errorlevel 1 (
 
 pyinstaller --noconfirm --onefile --windowed ^
     --name "Perch" ^
+    --icon "assets/perch.ico" ^
+    --add-data "assets/perch.png;assets" ^
+    --add-data "assets/perch.ico;assets" ^
     --collect-all customtkinter ^
     run.py
 if errorlevel 1 (
