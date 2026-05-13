@@ -8,16 +8,19 @@ band-per-folder layout. It walks a source flight folder, identifies each TIFF
 by its filename suffix, and copies (or moves) it into the matching band folder
 under a destination of your choosing.
 
-The current build ships with the **MicaSense RedEdge-MX Dual** preset baked in.
-The architecture is sensor-agnostic; more presets (Altum, single-camera
-RedEdge-MX, custom JSON) are on the roadmap.
+Two sensor presets are built in: **MicaSense RedEdge-MX Dual** and
+**MicaSense Altum-PT**. Pick from the dropdown at the top of the Input card.
+More presets (single-camera RedEdge-MX, custom JSON) are on the roadmap.
 
 ## Download
 
 Grab the latest `ImageSorter.exe` from the [Releases](https://github.com/Dozer3530/The-Drone-Image-Sorter/releases) page.
 Single file, no installer, no Python required on the target machine.
 
-## Active preset — RedEdge-MX Dual band map
+## Preset 1 — MicaSense RedEdge-MX Dual
+
+10 bands across two cameras (RED + BLUE). Applies to RedEdge-MX (serial RX02+)
+and Altum (AL05+) in the Dual configuration.
 
 | Suffix | Camera | Band            | Center (nm) | Bandwidth (nm) | Folder              |
 |:------:|:------:|-----------------|:-----------:|:--------------:|---------------------|
@@ -32,7 +35,25 @@ Single file, no installer, no Python required on the target machine.
 | 9      | BLUE   | Red Edge        | 705         | 10             | `09_RedEdge_705`    |
 | 10     | BLUE   | Red Edge        | 740         | 18             | `10_RedEdge_740`    |
 
-Applies to RedEdge-MX (serial RX02+) and Altum (AL05+) in the Dual configuration.
+## Preset 2 — MicaSense Altum-PT
+
+7 bands: 5 multispectral + panchromatic + LWIR (thermal). Single integrated
+sensor unit.
+
+| Suffix | Band      | Center      | Bandwidth | Folder            |
+|:------:|-----------|:-----------:|:---------:|-------------------|
+| 1      | Blue      | 475 nm      | 32 nm     | `01_Blue_475`     |
+| 2      | Green     | 560 nm      | 27 nm     | `02_Green_560`    |
+| 3      | Red       | 668 nm      | 14 nm     | `03_Red_668`      |
+| 4      | NIR       | 842 nm      | 57 nm     | `04_NIR_842`      |
+| 5      | Red Edge  | 717 nm      | 12 nm     | `05_RedEdge_717`  |
+| 6      | Panchro   | 634 nm      | 463 nm    | `06_Panchro_634`  |
+| 7      | LWIR      | 11 µm       | 6 µm      | `07_LWIR_11um`    |
+
+Note: suffix `6` means **Coastal Blue** on the Dual but **Panchro** on Altum-PT.
+Suffix `7` means **Green-531** on the Dual but **LWIR thermal** on Altum-PT —
+so picking the right preset matters. The app remembers your last choice
+between launches.
 
 ## What you get for each run
 
@@ -49,6 +70,7 @@ The output folder name is whatever you type — no forced prefix.
 
 ## Features
 
+- **Sensor presets** — RedEdge-MX Dual or Altum-PT from a dropdown.
 - Modern UI with light / dark / system theme (CustomTkinter).
 - Recursive scan — source layout doesn't have to match exactly.
 - **Copy** by default; **Move** is an opt-in checkbox with confirmation.

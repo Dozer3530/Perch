@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
 
-from .bands import BANDS
+from .bands import BANDS as _DEFAULT_BANDS, Band
 
 FILENAME_RE = re.compile(r"^IMG_(\d+)_(\d+)\.tif$", re.IGNORECASE)
 
@@ -58,9 +58,12 @@ def scan_source(
     source_root: Path,
     output_root: Path,
     *,
+    bands: dict[int, Band] | None = None,
     progress_cb: Callable[[int], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ScanResult:
+    if bands is None:
+        bands = _DEFAULT_BANDS
     files: list[PlannedFile] = []
     unrecognized: list[Path] = []
     non_image: list[Path] = []
@@ -82,7 +85,7 @@ def scan_source(
             unrecognized.append(path)
             continue
         sfx = int(m.group(2))
-        band = BANDS.get(sfx)
+        band = bands.get(sfx)
         if band is None:
             unrecognized.append(path)
             continue

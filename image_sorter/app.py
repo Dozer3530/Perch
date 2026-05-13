@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from . import settings
-from .bands import BANDS
+from .bands import DEFAULT_PRESET_KEY, PRESETS, Band, Preset, preset_by_label
 from .sorter import (
     CollisionGroup,
     ExecutionResult,
@@ -101,8 +101,19 @@ class _LogLine(_Msg):
     def __init__(self, line: str): self.line = line
 
 class _ExecDone(_Msg):
-    def __init__(self, result: ExecutionResult, scan: ScanResult, log_path: Path | None, output_root: Path):
-        self.result, self.scan, self.log_path, self.output_root = result, scan, log_path, output_root
+    def __init__(
+        self,
+        result: ExecutionResult,
+        scan: ScanResult,
+        log_path: Path | None,
+        output_root: Path,
+        bands: dict[int, Band],
+    ):
+        self.result = result
+        self.scan = scan
+        self.log_path = log_path
+        self.output_root = output_root
+        self.bands = bands
 
 class _WorkerError(_Msg):
     def __init__(self, exc: BaseException): self.exc = exc
@@ -174,30 +185,42 @@ class SorterApp:
         body = input_card.body
         body.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(body, text="Source flight folder").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        self.src_var = tk.StringVar()
-        ctk.CTkEntry(body, textvariable=self.src_var).grid(row=0, column=1, sticky="ew", padx=6, pady=6)
-        ctk.CTkButton(body, text="Browse...", width=100, command=self._pick_source).grid(
-            row=0, column=2, padx=6, pady=6
+        ctk.CTkLabel(body, text="Sensor preset").grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        self.preset_menu = ctk.CTkOptionMenu(
+            body,
+            values=[p.label for p in PRESETS.values()],
+            command=self._on_preset_change,
         )
+        self.preset_menu.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+        ctk.CTkLabel(
+            body, text="(determines suffix → band mapping)",
+            text_color=("gray45", "gray65"),
+        ).grid(row=0, column=2, sticky="w", padx=6, pady=6)
 
-        ctk.CTkLabel(body, text="Output parent folder").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        self.dst_var = tk.StringVar()
-        ctk.CTkEntry(body, textvariable=self.dst_var).grid(row=1, column=1, sticky="ew", padx=6, pady=6)
-        ctk.CTkButton(body, text="Browse...", width=100, command=self._pick_dest).grid(
+        ctk.CTkLabel(body, text="Source flight folder").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        self.src_var = tk.StringVar()
+        ctk.CTkEntry(body, textvariable=self.src_var).grid(row=1, column=1, sticky="ew", padx=6, pady=6)
+        ctk.CTkButton(body, text="Browse...", width=100, command=self._pick_source).grid(
             row=1, column=2, padx=6, pady=6
         )
 
-        ctk.CTkLabel(body, text="Output folder name").grid(row=2, column=0, sticky="w", padx=6, pady=6)
+        ctk.CTkLabel(body, text="Output parent folder").grid(row=2, column=0, sticky="w", padx=6, pady=6)
+        self.dst_var = tk.StringVar()
+        ctk.CTkEntry(body, textvariable=self.dst_var).grid(row=2, column=1, sticky="ew", padx=6, pady=6)
+        ctk.CTkButton(body, text="Browse...", width=100, command=self._pick_dest).grid(
+            row=2, column=2, padx=6, pady=6
+        )
+
+        ctk.CTkLabel(body, text="Output folder name").grid(row=3, column=0, sticky="w", padx=6, pady=6)
         self.name_var = tk.StringVar()
         ctk.CTkEntry(
             body,
             textvariable=self.name_var,
             placeholder_text="e.g. 0708_Nisbet_West_Corn",
-        ).grid(row=2, column=1, sticky="ew", padx=6, pady=6)
+        ).grid(row=3, column=1, sticky="ew", padx=6, pady=6)
         ctk.CTkLabel(
             body, text="(literal subfolder under parent)", text_color=("gray45", "gray65")
-        ).grid(row=2, column=2, sticky="w", padx=6, pady=6)
+        ).grid(row=3, column=2, sticky="w", padx=6, pady=6)
 
         # ---- Run card ----
         run_card = self._make_card(self.root, "Run")
@@ -296,6 +319,9 @@ class SorterApp:
         if isinstance(s.get("last_workers"), int):
             w = max(WORKER_MIN, min(WORKER_MAX, s["last_workers"]))
             self.workers_combo.set(str(w))
+        preset_key = s.get("last_preset") or DEFAULT_PRESET_KEY
+        preset = PRESETS.get(preset_key) or PRESETS[DEFAULT_PRESET_KEY]
+        self.preset_menu.set(preset.label)
 
     def _save_settings(self) -> None:
         try:
@@ -306,8 +332,16 @@ class SorterApp:
             "last_source": self.src_var.get().strip(),
             "last_destination": self.dst_var.get().strip(),
             "last_workers": workers,
+            "last_preset": preset_by_label(self.preset_menu.get()).key,
             "appearance": self.appearance_menu.get(),
         })
+
+    def _on_preset_change(self, label: str) -> None:
+        # Persist immediately so the choice survives across launches even
+        # without a run.
+        stored = settings.load()
+        stored["last_preset"] = preset_by_label(label).key
+        settings.save(stored)
 
     def _on_appearance_change(self, mode: str) -> None:
         ctk.set_appearance_mode(mode)
@@ -421,7 +455,10 @@ class SorterApp:
         self.open_btn.configure(state="disabled")
         self._last_output_root = output_root
 
+        preset = preset_by_label(self.preset_menu.get())
+
         self._log(f"== Run started {datetime.now().isoformat(timespec='seconds')} ==")
+        self._log(f"Preset:  {preset.label}  ({len(preset.bands)} bands)")
         self._log(f"Source:  {src}")
         self._log(f"Output:  {output_root}")
         self._log(f"Mode:    {'MOVE' if self.move_var.get() else 'COPY'}")
@@ -436,15 +473,18 @@ class SorterApp:
 
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(Path(src), output_root, self.move_var.get(), workers),
+            args=(Path(src), output_root, self.move_var.get(), workers, preset),
             daemon=True,
         )
         self.worker.start()
 
     # ---------- Worker thread ----------
 
-    def _worker_main(self, src: Path, output_root: Path, move: bool, workers: int) -> None:
+    def _worker_main(
+        self, src: Path, output_root: Path, move: bool, workers: int, preset: Preset
+    ) -> None:
         worker_log: list[str] = []
+        bands = preset.bands
 
         def log(line: str) -> None:
             worker_log.append(line)
@@ -454,11 +494,12 @@ class SorterApp:
             scan = scan_source(
                 src,
                 output_root,
+                bands=bands,
                 progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
                 cancel_event=self.cancel_event,
             )
             if self.cancel_event.is_set():
-                self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root))
+                self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root, bands))
                 return
             self.msg_queue.put(_ScanDone(scan))
 
@@ -477,7 +518,7 @@ class SorterApp:
                 choice = self.collision_choice or "cancel"
                 log(f"Collision handling chosen: {choice.upper()}")
                 if choice == "cancel" or self.cancel_event.is_set():
-                    self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root))
+                    self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root, bands))
                     return
                 if choice == "rename":
                     renamed = auto_rename_for_uniqueness(scan.files)
@@ -504,12 +545,12 @@ class SorterApp:
                 with log_path.open("w", encoding="utf-8") as f:
                     f.write("\n".join(worker_log))
                     f.write("\n\n--- Summary ---\n")
-                    f.write(_summary_text(scan, exec_result))
+                    f.write(_summary_text(scan, exec_result, bands))
             except Exception as e:  # noqa: BLE001
                 self.msg_queue.put(_LogLine(f"WARN: could not write log file: {e}"))
                 log_path = None
 
-            self.msg_queue.put(_ExecDone(exec_result, scan, log_path, output_root))
+            self.msg_queue.put(_ExecDone(exec_result, scan, log_path, output_root, bands))
         except Exception as e:  # noqa: BLE001
             self.msg_queue.put(_WorkerError(e))
 
@@ -619,7 +660,7 @@ class SorterApp:
         self._set_busy(False)
         self._stop_indeterminate()
         self.progress.set(1.0)
-        summary = _summary_text(msg.scan, msg.result)
+        summary = _summary_text(msg.scan, msg.result, msg.bands)
         self._log("")
         self._log("--- Summary ---")
         for line in summary.splitlines():
@@ -642,7 +683,7 @@ class SorterApp:
             self.open_btn.configure(state="normal")
 
 
-def _summary_text(scan: ScanResult, result: ExecutionResult) -> str:
+def _summary_text(scan: ScanResult, result: ExecutionResult, bands: dict[int, Band]) -> str:
     lines: list[str] = []
     lines.append(f"Files seen in source:  {scan.total_seen}")
     lines.append(f"Files written:         {result.written}")
@@ -654,8 +695,9 @@ def _summary_text(scan: ScanResult, result: ExecutionResult) -> str:
         lines.append("")
         lines.append("Written per band:")
         for sfx in sorted(result.per_band):
-            band = BANDS[sfx]
-            lines.append(f"  {band.folder}: {result.per_band[sfx]}")
+            band = bands.get(sfx)
+            folder = band.folder if band else f"band_{sfx}"
+            lines.append(f"  {folder}: {result.per_band[sfx]}")
     if scan.unrecognized_tifs:
         lines.append("")
         lines.append(f"Unrecognized TIFFs (showing up to 20 of {len(scan.unrecognized_tifs)}):")
