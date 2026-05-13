@@ -26,7 +26,6 @@ from .sorter import (
     dedupe_keep_first,
     execute_plan,
     find_collisions,
-    scan_batch,
     scan_source,
 )
 
@@ -355,39 +354,32 @@ class SorterApp:
             rbody,
             text="Also copy other files (.dat, .csv, GPS logs, etc.) into a Misc folder",
             variable=self.include_misc_var,
-        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 4))
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
 
-        self.batch_mode_var = tk.BooleanVar(value=False)
-        ctk.CTkCheckBox(
-            rbody,
-            text="Batch mode  —  source folder contains multiple flight folders, each sorted into its own subfolder",
-            variable=self.batch_mode_var,
-        ).grid(row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
-
-        ctk.CTkLabel(rbody, text="Copy workers").grid(row=3, column=0, sticky="w", padx=6, pady=6)
+        ctk.CTkLabel(rbody, text="Copy workers").grid(row=2, column=0, sticky="w", padx=6, pady=6)
         self.workers_combo = ctk.CTkComboBox(
             rbody, values=list(WORKER_CHOICES), width=80, justify="center"
         )
         self.workers_combo.set(str(DEFAULT_WORKERS))
-        self.workers_combo.grid(row=3, column=1, sticky="w", padx=6, pady=6)
+        self.workers_combo.grid(row=2, column=1, sticky="w", padx=6, pady=6)
         ctk.CTkLabel(
             rbody,
             text="1 = serial · ~4 is a good default · drop to 1-2 for HDD-to-same-HDD · 8+ for network shares",
             text_color=("gray45", "gray65"),
-        ).grid(row=3, column=2, columnspan=2, sticky="w", padx=6, pady=6)
+        ).grid(row=2, column=2, columnspan=2, sticky="w", padx=6, pady=6)
 
         self.start_btn = ctk.CTkButton(rbody, text="Scan & Sort", width=130, command=self._on_start)
-        self.start_btn.grid(row=4, column=0, padx=6, pady=(10, 4), sticky="w")
+        self.start_btn.grid(row=3, column=0, padx=6, pady=(10, 4), sticky="w")
         self.cancel_btn = ctk.CTkButton(
             rbody, text="Cancel", width=100, command=self._on_cancel, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.cancel_btn.grid(row=4, column=1, padx=6, pady=(10, 4), sticky="w")
+        self.cancel_btn.grid(row=3, column=1, padx=6, pady=(10, 4), sticky="w")
         self.open_btn = ctk.CTkButton(
             rbody, text="Open output folder", width=170, command=self._open_output, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.open_btn.grid(row=4, column=2, padx=6, pady=(10, 4), sticky="w")
+        self.open_btn.grid(row=3, column=2, padx=6, pady=(10, 4), sticky="w")
 
         # ---- Progress + status ----
         prog_card = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -541,8 +533,6 @@ class SorterApp:
             self.workers_combo.set(str(w))
         if isinstance(s.get("include_misc"), bool):
             self.include_misc_var.set(s["include_misc"])
-        if isinstance(s.get("batch_mode"), bool):
-            self.batch_mode_var.set(s["batch_mode"])
         preset_key = s.get("last_preset") or DEFAULT_PRESET_KEY
         preset = PRESETS.get(preset_key) or PRESETS[DEFAULT_PRESET_KEY]
         self.preset_menu.set(preset.label)
@@ -558,7 +548,6 @@ class SorterApp:
             "last_workers": workers,
             "last_preset": preset_by_label(self.preset_menu.get()).key,
             "include_misc": bool(self.include_misc_var.get()),
-            "batch_mode": bool(self.batch_mode_var.get()),
             "appearance": self.appearance_menu.get(),
         })
 
@@ -714,17 +703,14 @@ class SorterApp:
 
         preset = preset_by_label(self.preset_menu.get())
         include_misc = bool(self.include_misc_var.get())
-        batch_mode = bool(self.batch_mode_var.get())
 
         self._log(f"== Run started {datetime.now().isoformat(timespec='seconds')} ==")
         self._log(f"Preset:   {preset.label}  ({len(preset.bands)} bands)")
-        self._log(f"Source:   {src}{'  (batch parent)' if batch_mode else ''}")
+        self._log(f"Source:   {src}")
         self._log(f"Output:   {output_root}")
         self._log(f"Mode:     {'MOVE' if self.move_var.get() else 'COPY'}")
         self._log(f"Workers:  {workers}")
         self._log(f"Misc:     {'on (.dat/.csv/etc. -> Misc/)' if include_misc else 'off'}")
-        if batch_mode:
-            self._log(f"Batch:    on — each flight subfolder sorted into its own output")
         self._log("")
 
         self._set_busy(True)
@@ -735,7 +721,7 @@ class SorterApp:
 
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(Path(src), output_root, self.move_var.get(), workers, preset, include_misc, batch_mode),
+            args=(Path(src), output_root, self.move_var.get(), workers, preset, include_misc),
             daemon=True,
         )
         self.worker.start()
@@ -750,7 +736,6 @@ class SorterApp:
         workers: int,
         preset: Preset,
         include_misc: bool,
-        batch_mode: bool,
     ) -> None:
         worker_log: list[str] = []
         bands = preset.bands
@@ -760,27 +745,14 @@ class SorterApp:
             self.msg_queue.put(_LogLine(line))
 
         try:
-            if batch_mode:
-                scan, flights = scan_batch(
-                    src,
-                    output_root,
-                    bands=bands,
-                    include_misc=include_misc,
-                    progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
-                    cancel_event=self.cancel_event,
-                )
-                log(f"Batch scan: {len(flights)} flight folder(s) discovered.")
-                for f in flights:
-                    log(f"  - {f.name}")
-            else:
-                scan = scan_source(
-                    src,
-                    output_root,
-                    bands=bands,
-                    include_misc=include_misc,
-                    progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
-                    cancel_event=self.cancel_event,
-                )
+            scan = scan_source(
+                src,
+                output_root,
+                bands=bands,
+                include_misc=include_misc,
+                progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
+                cancel_event=self.cancel_event,
+            )
             if self.cancel_event.is_set():
                 self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root, bands))
                 return

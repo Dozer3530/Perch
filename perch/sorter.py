@@ -114,60 +114,6 @@ def scan_source(
     )
 
 
-# ---------------- Batch (multi-flight) ----------------
-
-def scan_batch(
-    parent_root: Path,
-    output_root: Path,
-    *,
-    bands: dict[int, Band] | None = None,
-    include_misc: bool = True,
-    progress_cb: Callable[[int], None] | None = None,
-    cancel_event: threading.Event | None = None,
-) -> tuple[ScanResult, list[Path]]:
-    """Scan a parent folder containing multiple flight subfolders.
-
-    Each immediate child directory is treated as its own flight; that flight's
-    output goes to ``output_root / <flight_dir_name> / <band_folder>``. The
-    returned ScanResult is the merged result across all flights, so it flows
-    through the existing collision detection + executor unchanged. The second
-    element of the tuple is the list of discovered flight directories (in scan
-    order), useful for status reporting and the summary.
-    """
-    flights = sorted(
-        d for d in parent_root.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    )
-    combined_files: list[PlannedFile] = []
-    combined_unrecognized: list[Path] = []
-    combined_non_image: list[Path] = []
-    combined_seen = 0
-    for flight in flights:
-        if cancel_event is not None and cancel_event.is_set():
-            break
-        sub = scan_source(
-            flight,
-            output_root / flight.name,
-            bands=bands,
-            include_misc=include_misc,
-            progress_cb=progress_cb,
-            cancel_event=cancel_event,
-        )
-        combined_files.extend(sub.files)
-        combined_unrecognized.extend(sub.unrecognized_tifs)
-        combined_non_image.extend(sub.non_image_files)
-        combined_seen += sub.total_seen
-    return (
-        ScanResult(
-            files=combined_files,
-            unrecognized_tifs=combined_unrecognized,
-            non_image_files=combined_non_image,
-            total_seen=combined_seen,
-        ),
-        flights,
-    )
-
-
 # ---------------- Collisions ----------------
 
 def find_collisions(files: Iterable[PlannedFile]) -> list[CollisionGroup]:

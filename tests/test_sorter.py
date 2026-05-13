@@ -10,7 +10,6 @@ from perch.sorter import (
     dedupe_keep_first,
     execute_plan,
     find_collisions,
-    scan_batch,
     scan_source,
 )
 
@@ -173,56 +172,3 @@ def test_per_band_counts_in_result(fake_flight):
     r = execute_plan(scan.files, move=False, workers=2)
     for sfx in range(1, 11):
         assert r.per_band[sfx] == 1
-
-
-# ---------------- Batch (multi-flight) ----------------
-
-def test_scan_batch_discovers_child_flights(fake_flight, tmp_path):
-    parent = tmp_path / "batch_parent"
-    parent.mkdir()
-    a = fake_flight(name=str(parent.name) + "/flightA", with_dual_bands=True)
-    b = fake_flight(name=str(parent.name) + "/flightB", with_dual_bands=True)
-    out = tmp_path / "out"
-    scan, flights = scan_batch(parent, out, bands=REDEDGE_MX_DUAL.bands)
-    assert len(flights) == 2
-    assert {f.name for f in flights} == {"flightA", "flightB"}
-    band_plans = [pf for pf in scan.files if pf.kind == "band"]
-    assert len(band_plans) == 20  # 10 per flight
-
-
-def test_scan_batch_routes_each_flight_to_its_own_subfolder(fake_flight, tmp_path):
-    parent = tmp_path / "batch_parent"
-    parent.mkdir()
-    fake_flight(name=f"{parent.name}/flightA", with_dual_bands=True)
-    fake_flight(name=f"{parent.name}/flightB", with_dual_bands=True)
-    out = tmp_path / "out"
-    scan, _ = scan_batch(parent, out, bands=REDEDGE_MX_DUAL.bands)
-    execute_plan(scan.files, move=False, workers=2)
-    # Each flight has its own umbrella subfolder with the full band tree inside.
-    for fname in ("flightA", "flightB"):
-        for band in REDEDGE_MX_DUAL.bands.values():
-            d = out / fname / band.folder
-            assert d.is_dir(), f"missing {d}"
-            assert any(d.glob("*.tif")), f"empty {d}"
-
-
-def test_scan_batch_no_cross_flight_collision(fake_flight, tmp_path):
-    """Two flights with identical filenames don't collide because they land
-    in different umbrella subfolders."""
-    parent = tmp_path / "batch_parent"
-    parent.mkdir()
-    fake_flight(name=f"{parent.name}/flightA", with_dual_bands=True)
-    fake_flight(name=f"{parent.name}/flightB", with_dual_bands=True)
-    out = tmp_path / "out"
-    scan, _ = scan_batch(parent, out, bands=REDEDGE_MX_DUAL.bands)
-    assert not find_collisions(scan.files), "batch flights collided"
-
-
-def test_scan_batch_skips_hidden_dirs(fake_flight, tmp_path):
-    parent = tmp_path / "batch_parent"
-    parent.mkdir()
-    fake_flight(name=f"{parent.name}/flightA", with_dual_bands=True)
-    (parent / ".hidden").mkdir()  # should be skipped
-    out = tmp_path / "out"
-    _, flights = scan_batch(parent, out, bands=REDEDGE_MX_DUAL.bands)
-    assert {f.name for f in flights} == {"flightA"}
