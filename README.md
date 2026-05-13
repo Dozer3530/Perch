@@ -75,6 +75,13 @@ The output folder name is whatever you type — no forced prefix.
 ## Features
 
 - **Sensor presets** — RedEdge-MX Dual or Altum-PT from a dropdown.
+  **Auto-detected from EXIF** the moment you pick a source folder, so the
+  dropdown self-selects from the first image's Make/Model tags.
+- **Batch mode** — point Perch at a parent folder containing multiple flight
+  folders and sort them all in one queue, each into its own umbrella subfolder.
+  Saves walking through the wizard once per flight on survey days.
+- **Drag and drop** — drop a folder onto the window to set Source (or Output
+  parent, if Source is already filled).
 - **Misc folder** — everything that isn't a band TIFF (GPS logs, .dat files,
   parameter logs, etc.) is captured into a `Misc/` sibling folder with the
   source layout preserved. Especially important for MOVE mode so nothing gets

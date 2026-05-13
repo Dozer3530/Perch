@@ -17,6 +17,7 @@ pyinstaller --noconfirm --onefile --windowed ^
     --add-data "assets/perch.png;assets" ^
     --add-data "assets/perch.ico;assets" ^
     --collect-all customtkinter ^
+    --collect-all tkinterdnd2 ^
     run.py
 if errorlevel 1 (
     echo Build failed.

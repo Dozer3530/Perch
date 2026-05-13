@@ -57,6 +57,7 @@ jobs:
             --add-data "assets/perch.png;assets" `
             --add-data "assets/perch.ico;assets" `
             --collect-all customtkinter `
+            --collect-all tkinterdnd2 `
             run.py
 
       - name: Upload build artifact

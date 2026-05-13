@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from . import __version__, assets, settings, updater
+from . import __version__, assets, exif, settings, updater
 from .bands import DEFAULT_PRESET_KEY, PRESETS, Band, Preset, preset_by_label
 from .sorter import (
     CollisionGroup,
@@ -26,6 +26,7 @@ from .sorter import (
     dedupe_keep_first,
     execute_plan,
     find_collisions,
+    scan_batch,
     scan_source,
 )
 
@@ -143,11 +144,15 @@ class SorterApp:
         self._eta_samples: deque[tuple[float, int]] = deque(maxlen=200)
         self._last_output_root: Path | None = None
         self._progress_indeterminate = False
+        # Track whether the user manually overrode the preset since the last
+        # source pick. EXIF auto-detection respects this and won't clobber.
+        self._user_set_preset = False
 
         self._stored = settings.load()
 
         self._build_ui()
         self._prefill_from_settings()
+        self._setup_drag_and_drop()
 
         self.root.after(100, self._poll_queue)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -156,6 +161,68 @@ class SorterApp:
         # first; the check itself runs on a background thread and silently
         # no-ops on any error.
         self.root.after(750, self._start_update_check)
+
+    # ---------- Drag and drop ----------
+
+    def _setup_drag_and_drop(self) -> None:
+        """Register the window as a drop target if tkinterdnd2 is wired in."""
+        try:
+            from tkinterdnd2 import DND_FILES
+        except ImportError:
+            return
+        if not hasattr(self.root, "drop_target_register"):
+            return  # plain CTk root (DnD init failed in _make_root)
+        try:
+            self.root.drop_target_register(DND_FILES)
+            self.root.dnd_bind("<<Drop>>", self._on_drop)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_drop(self, event) -> None:
+        paths = self._parse_dnd_paths(getattr(event, "data", ""))
+        if not paths:
+            return
+        p = Path(paths[0])
+        if not p.is_dir():
+            return  # ignore non-folder drops
+        src_empty = not self.src_var.get().strip()
+        dst_empty = not self.dst_var.get().strip()
+        if src_empty:
+            self._set_source(p)
+        elif dst_empty:
+            self.dst_var.set(str(p))
+        else:
+            choice = messagebox.askyesnocancel(
+                "Use dropped folder as...",
+                f"{p}\n\nUse this folder as which input?\n\n"
+                "  Yes    — Source flight folder\n"
+                "  No     — Output parent folder\n"
+                "  Cancel — ignore",
+            )
+            if choice is True:
+                self._set_source(p)
+            elif choice is False:
+                self.dst_var.set(str(p))
+
+    def _set_source(self, p: Path) -> None:
+        self.src_var.set(str(p))
+        if not self.name_var.get().strip():
+            self.name_var.set(p.name)
+        self._user_set_preset = False
+        self._kickoff_exif_detect(p)
+
+    def _parse_dnd_paths(self, data: str) -> list[str]:
+        """Split a TkinterDnD <<Drop>> data string into a list of paths.
+
+        Tk's drag-drop wraps paths-with-spaces in braces; ``tk.splitlist`` is
+        the Tcl-aware split that handles both braced and unbraced forms.
+        """
+        if not data:
+            return []
+        try:
+            return list(self.root.tk.splitlist(data))
+        except Exception:  # noqa: BLE001
+            return [data.strip()]
 
     # ---------- Window icon ----------
 
@@ -288,32 +355,39 @@ class SorterApp:
             rbody,
             text="Also copy other files (.dat, .csv, GPS logs, etc.) into a Misc folder",
             variable=self.include_misc_var,
-        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 4))
 
-        ctk.CTkLabel(rbody, text="Copy workers").grid(row=2, column=0, sticky="w", padx=6, pady=6)
+        self.batch_mode_var = tk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            rbody,
+            text="Batch mode  —  source folder contains multiple flight folders, each sorted into its own subfolder",
+            variable=self.batch_mode_var,
+        ).grid(row=2, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
+
+        ctk.CTkLabel(rbody, text="Copy workers").grid(row=3, column=0, sticky="w", padx=6, pady=6)
         self.workers_combo = ctk.CTkComboBox(
             rbody, values=list(WORKER_CHOICES), width=80, justify="center"
         )
         self.workers_combo.set(str(DEFAULT_WORKERS))
-        self.workers_combo.grid(row=2, column=1, sticky="w", padx=6, pady=6)
+        self.workers_combo.grid(row=3, column=1, sticky="w", padx=6, pady=6)
         ctk.CTkLabel(
             rbody,
             text="1 = serial · ~4 is a good default · drop to 1-2 for HDD-to-same-HDD · 8+ for network shares",
             text_color=("gray45", "gray65"),
-        ).grid(row=2, column=2, columnspan=2, sticky="w", padx=6, pady=6)
+        ).grid(row=3, column=2, columnspan=2, sticky="w", padx=6, pady=6)
 
         self.start_btn = ctk.CTkButton(rbody, text="Scan & Sort", width=130, command=self._on_start)
-        self.start_btn.grid(row=3, column=0, padx=6, pady=(10, 4), sticky="w")
+        self.start_btn.grid(row=4, column=0, padx=6, pady=(10, 4), sticky="w")
         self.cancel_btn = ctk.CTkButton(
             rbody, text="Cancel", width=100, command=self._on_cancel, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.cancel_btn.grid(row=3, column=1, padx=6, pady=(10, 4), sticky="w")
+        self.cancel_btn.grid(row=4, column=1, padx=6, pady=(10, 4), sticky="w")
         self.open_btn = ctk.CTkButton(
             rbody, text="Open output folder", width=170, command=self._open_output, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.open_btn.grid(row=3, column=2, padx=6, pady=(10, 4), sticky="w")
+        self.open_btn.grid(row=4, column=2, padx=6, pady=(10, 4), sticky="w")
 
         # ---- Progress + status ----
         prog_card = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -467,6 +541,8 @@ class SorterApp:
             self.workers_combo.set(str(w))
         if isinstance(s.get("include_misc"), bool):
             self.include_misc_var.set(s["include_misc"])
+        if isinstance(s.get("batch_mode"), bool):
+            self.batch_mode_var.set(s["batch_mode"])
         preset_key = s.get("last_preset") or DEFAULT_PRESET_KEY
         preset = PRESETS.get(preset_key) or PRESETS[DEFAULT_PRESET_KEY]
         self.preset_menu.set(preset.label)
@@ -482,10 +558,14 @@ class SorterApp:
             "last_workers": workers,
             "last_preset": preset_by_label(self.preset_menu.get()).key,
             "include_misc": bool(self.include_misc_var.get()),
+            "batch_mode": bool(self.batch_mode_var.get()),
             "appearance": self.appearance_menu.get(),
         })
 
     def _on_preset_change(self, label: str) -> None:
+        # Flag that the user has touched the preset — auto-detect from EXIF
+        # will respect this and not clobber.
+        self._user_set_preset = True
         # Persist immediately so the choice survives across launches even
         # without a run.
         stored = settings.load()
@@ -505,9 +585,37 @@ class SorterApp:
         d = filedialog.askdirectory(title="Choose source flight folder")
         if not d:
             return
-        self.src_var.set(d)
-        if not self.name_var.get().strip():
-            self.name_var.set(Path(d).name)
+        self._set_source(Path(d))
+
+    def _kickoff_exif_detect(self, source: Path) -> None:
+        """Run sensor detection on a background thread, then update the
+        preset dropdown on the main thread iff the user hasn't manually
+        chosen a preset since the source was set."""
+        def worker() -> None:
+            key = exif.detect_sensor(source)
+            if key is None:
+                return
+            self.root.after(0, self._apply_detected_preset, key)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_detected_preset(self, key: str) -> None:
+        if self._user_set_preset:
+            return  # the user already overrode; respect their choice
+        preset = PRESETS.get(key)
+        if preset is None:
+            return
+        # Only act if it would actually change something.
+        if self.preset_menu.get() == preset.label:
+            return
+        self.preset_menu.set(preset.label)
+        # _on_preset_change normally flips _user_set_preset; since this is
+        # an auto-detect, we set the var directly via .set() (no callback
+        # fires) — but persist anyway so a re-launch keeps the choice.
+        stored = settings.load()
+        stored["last_preset"] = preset.key
+        settings.save(stored)
+        # Surface the change in the log so the user knows.
+        self._log(f"Auto-detected sensor preset from EXIF: {preset.label}")
 
     def _pick_dest(self) -> None:
         d = filedialog.askdirectory(title="Choose output parent folder")
@@ -606,14 +714,17 @@ class SorterApp:
 
         preset = preset_by_label(self.preset_menu.get())
         include_misc = bool(self.include_misc_var.get())
+        batch_mode = bool(self.batch_mode_var.get())
 
         self._log(f"== Run started {datetime.now().isoformat(timespec='seconds')} ==")
         self._log(f"Preset:   {preset.label}  ({len(preset.bands)} bands)")
-        self._log(f"Source:   {src}")
+        self._log(f"Source:   {src}{'  (batch parent)' if batch_mode else ''}")
         self._log(f"Output:   {output_root}")
         self._log(f"Mode:     {'MOVE' if self.move_var.get() else 'COPY'}")
         self._log(f"Workers:  {workers}")
         self._log(f"Misc:     {'on (.dat/.csv/etc. -> Misc/)' if include_misc else 'off'}")
+        if batch_mode:
+            self._log(f"Batch:    on — each flight subfolder sorted into its own output")
         self._log("")
 
         self._set_busy(True)
@@ -624,7 +735,7 @@ class SorterApp:
 
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(Path(src), output_root, self.move_var.get(), workers, preset, include_misc),
+            args=(Path(src), output_root, self.move_var.get(), workers, preset, include_misc, batch_mode),
             daemon=True,
         )
         self.worker.start()
@@ -639,6 +750,7 @@ class SorterApp:
         workers: int,
         preset: Preset,
         include_misc: bool,
+        batch_mode: bool,
     ) -> None:
         worker_log: list[str] = []
         bands = preset.bands
@@ -648,14 +760,27 @@ class SorterApp:
             self.msg_queue.put(_LogLine(line))
 
         try:
-            scan = scan_source(
-                src,
-                output_root,
-                bands=bands,
-                include_misc=include_misc,
-                progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
-                cancel_event=self.cancel_event,
-            )
+            if batch_mode:
+                scan, flights = scan_batch(
+                    src,
+                    output_root,
+                    bands=bands,
+                    include_misc=include_misc,
+                    progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
+                    cancel_event=self.cancel_event,
+                )
+                log(f"Batch scan: {len(flights)} flight folder(s) discovered.")
+                for f in flights:
+                    log(f"  - {f.name}")
+            else:
+                scan = scan_source(
+                    src,
+                    output_root,
+                    bands=bands,
+                    include_misc=include_misc,
+                    progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
+                    cancel_event=self.cancel_event,
+                )
             if self.cancel_event.is_set():
                 self.msg_queue.put(_ExecDone(ExecutionResult(cancelled=True), scan, None, output_root, bands))
                 return
@@ -881,9 +1006,26 @@ def _summary_text(scan: ScanResult, result: ExecutionResult, bands: dict[int, Ba
     return "\n".join(lines)
 
 
+def _make_root() -> ctk.CTk:
+    """Construct a CTk root with drag-and-drop support if tkinterdnd2 is
+    available, otherwise a plain CTk root. Soft-fails: if DnD initialization
+    raises, fall back to a plain root and log nothing — the app still works."""
+    try:
+        import tkinterdnd2
+
+        class _DnDRoot(ctk.CTk, tkinterdnd2.TkinterDnD.DnDWrapper):
+            def __init__(self):
+                super().__init__()
+                self.TkdndVersion = tkinterdnd2.TkinterDnD._require(self)
+
+        return _DnDRoot()
+    except Exception:  # noqa: BLE001 — DnD is best-effort
+        return ctk.CTk()
+
+
 def main() -> None:
     ctk.set_default_color_theme("blue")
-    root = ctk.CTk()
+    root = _make_root()
     SorterApp(root)
     root.mainloop()
 
