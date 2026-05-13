@@ -7,7 +7,7 @@
 [![CI & Release](https://github.com/Dozer3530/Perch/actions/workflows/release.yml/badge.svg)](https://github.com/Dozer3530/Perch/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Ai assitance was used to make this program possible
+AI assitance was used to make this program possible
 
 A Windows GUI for reorganizing multi-band drone imagery into a flat,
 band-per-folder layout. Point it at a flight folder, pick a sensor preset, and
