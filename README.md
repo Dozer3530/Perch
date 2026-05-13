@@ -71,6 +71,10 @@ The output folder name is whatever you type — no forced prefix.
 ## Features
 
 - **Sensor presets** — RedEdge-MX Dual or Altum-PT from a dropdown.
+- **Misc folder** — everything that isn't a band TIFF (GPS logs, .dat files,
+  parameter logs, etc.) is captured into a `Misc/` sibling folder with the
+  source layout preserved. Especially important for MOVE mode so nothing gets
+  stranded. Toggle off if you only want the band TIFFs.
 - Modern UI with light / dark / system theme (CustomTkinter).
 - Recursive scan — source layout doesn't have to match exactly.
 - **Copy** by default; **Move** is an opt-in checkbox with confirmation.

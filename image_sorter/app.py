@@ -233,32 +233,39 @@ class SorterApp:
             rbody,
             text="Move files instead of copying  (destructive — originals deleted)",
             variable=self.move_var,
-        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(2, 8))
+        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=6, pady=(2, 4))
 
-        ctk.CTkLabel(rbody, text="Copy workers").grid(row=1, column=0, sticky="w", padx=6, pady=6)
+        self.include_misc_var = tk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            rbody,
+            text="Also copy other files (.dat, .csv, GPS logs, etc.) into a Misc folder",
+            variable=self.include_misc_var,
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=6, pady=(0, 8))
+
+        ctk.CTkLabel(rbody, text="Copy workers").grid(row=2, column=0, sticky="w", padx=6, pady=6)
         self.workers_combo = ctk.CTkComboBox(
             rbody, values=list(WORKER_CHOICES), width=80, justify="center"
         )
         self.workers_combo.set(str(DEFAULT_WORKERS))
-        self.workers_combo.grid(row=1, column=1, sticky="w", padx=6, pady=6)
+        self.workers_combo.grid(row=2, column=1, sticky="w", padx=6, pady=6)
         ctk.CTkLabel(
             rbody,
             text="1 = serial · ~4 is a good default · drop to 1-2 for HDD-to-same-HDD · 8+ for network shares",
             text_color=("gray45", "gray65"),
-        ).grid(row=1, column=2, columnspan=2, sticky="w", padx=6, pady=6)
+        ).grid(row=2, column=2, columnspan=2, sticky="w", padx=6, pady=6)
 
         self.start_btn = ctk.CTkButton(rbody, text="Scan & Sort", width=130, command=self._on_start)
-        self.start_btn.grid(row=2, column=0, padx=6, pady=(10, 4), sticky="w")
+        self.start_btn.grid(row=3, column=0, padx=6, pady=(10, 4), sticky="w")
         self.cancel_btn = ctk.CTkButton(
             rbody, text="Cancel", width=100, command=self._on_cancel, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.cancel_btn.grid(row=2, column=1, padx=6, pady=(10, 4), sticky="w")
+        self.cancel_btn.grid(row=3, column=1, padx=6, pady=(10, 4), sticky="w")
         self.open_btn = ctk.CTkButton(
             rbody, text="Open output folder", width=170, command=self._open_output, state="disabled",
             fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40"),
         )
-        self.open_btn.grid(row=2, column=2, padx=6, pady=(10, 4), sticky="w")
+        self.open_btn.grid(row=3, column=2, padx=6, pady=(10, 4), sticky="w")
 
         # ---- Progress + status ----
         prog_card = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -319,6 +326,8 @@ class SorterApp:
         if isinstance(s.get("last_workers"), int):
             w = max(WORKER_MIN, min(WORKER_MAX, s["last_workers"]))
             self.workers_combo.set(str(w))
+        if isinstance(s.get("include_misc"), bool):
+            self.include_misc_var.set(s["include_misc"])
         preset_key = s.get("last_preset") or DEFAULT_PRESET_KEY
         preset = PRESETS.get(preset_key) or PRESETS[DEFAULT_PRESET_KEY]
         self.preset_menu.set(preset.label)
@@ -333,6 +342,7 @@ class SorterApp:
             "last_destination": self.dst_var.get().strip(),
             "last_workers": workers,
             "last_preset": preset_by_label(self.preset_menu.get()).key,
+            "include_misc": bool(self.include_misc_var.get()),
             "appearance": self.appearance_menu.get(),
         })
 
@@ -456,13 +466,15 @@ class SorterApp:
         self._last_output_root = output_root
 
         preset = preset_by_label(self.preset_menu.get())
+        include_misc = bool(self.include_misc_var.get())
 
         self._log(f"== Run started {datetime.now().isoformat(timespec='seconds')} ==")
-        self._log(f"Preset:  {preset.label}  ({len(preset.bands)} bands)")
-        self._log(f"Source:  {src}")
-        self._log(f"Output:  {output_root}")
-        self._log(f"Mode:    {'MOVE' if self.move_var.get() else 'COPY'}")
-        self._log(f"Workers: {workers}")
+        self._log(f"Preset:   {preset.label}  ({len(preset.bands)} bands)")
+        self._log(f"Source:   {src}")
+        self._log(f"Output:   {output_root}")
+        self._log(f"Mode:     {'MOVE' if self.move_var.get() else 'COPY'}")
+        self._log(f"Workers:  {workers}")
+        self._log(f"Misc:     {'on (.dat/.csv/etc. -> Misc/)' if include_misc else 'off'}")
         self._log("")
 
         self._set_busy(True)
@@ -473,7 +485,7 @@ class SorterApp:
 
         self.worker = threading.Thread(
             target=self._worker_main,
-            args=(Path(src), output_root, self.move_var.get(), workers, preset),
+            args=(Path(src), output_root, self.move_var.get(), workers, preset, include_misc),
             daemon=True,
         )
         self.worker.start()
@@ -481,7 +493,13 @@ class SorterApp:
     # ---------- Worker thread ----------
 
     def _worker_main(
-        self, src: Path, output_root: Path, move: bool, workers: int, preset: Preset
+        self,
+        src: Path,
+        output_root: Path,
+        move: bool,
+        workers: int,
+        preset: Preset,
+        include_misc: bool,
     ) -> None:
         worker_log: list[str] = []
         bands = preset.bands
@@ -495,6 +513,7 @@ class SorterApp:
                 src,
                 output_root,
                 bands=bands,
+                include_misc=include_misc,
                 progress_cb=lambda n: self.msg_queue.put(_ScanProgress(n)),
                 cancel_event=self.cancel_event,
             )
@@ -572,10 +591,18 @@ class SorterApp:
             self._stop_indeterminate()
             self.progress.configure(mode="determinate")
             self.progress.set(0)
+            band_count = sum(1 for pf in msg.result.files if pf.kind == "band")
+            misc_count = sum(1 for pf in msg.result.files if pf.kind == "misc")
+            misc_part = f", {misc_count} misc files" if misc_count else ""
+            non_image_part = (
+                f"{len(msg.result.non_image_files)} non-image files skipped"
+                if misc_count == 0
+                else f"{len(msg.result.non_image_files)} non-image files routed to Misc/"
+            )
             self._log(
-                f"Scan complete: {len(msg.result.files)} TIFFs queued, "
+                f"Scan complete: {band_count} band TIFFs queued{misc_part}, "
                 f"{len(msg.result.unrecognized_tifs)} unrecognized TIFFs, "
-                f"{len(msg.result.non_image_files)} non-image files skipped."
+                f"{non_image_part}."
             )
             self._set_status("Scan done — starting copy...", "working")
             self._eta_samples.clear()
@@ -684,13 +711,15 @@ class SorterApp:
 
 
 def _summary_text(scan: ScanResult, result: ExecutionResult, bands: dict[int, Band]) -> str:
+    band_written = result.written - result.misc_written
     lines: list[str] = []
     lines.append(f"Files seen in source:  {scan.total_seen}")
-    lines.append(f"Files written:         {result.written}")
+    lines.append(f"Band files written:    {band_written}")
+    lines.append(f"Misc files written:    {result.misc_written}")
     lines.append(f"Skipped (already in destination): {result.skipped_existing}")
     lines.append(f"Failed:                {len(result.failed)}")
     lines.append(f"Unrecognized TIFFs:    {len(scan.unrecognized_tifs)}")
-    lines.append(f"Non-image files skipped: {len(scan.non_image_files)}")
+    lines.append(f"Non-image files in source: {len(scan.non_image_files)}")
     if result.per_band:
         lines.append("")
         lines.append("Written per band:")
@@ -698,6 +727,8 @@ def _summary_text(scan: ScanResult, result: ExecutionResult, bands: dict[int, Ba
             band = bands.get(sfx)
             folder = band.folder if band else f"band_{sfx}"
             lines.append(f"  {folder}: {result.per_band[sfx]}")
+        if result.misc_written:
+            lines.append(f"  Misc: {result.misc_written}")
     if scan.unrecognized_tifs:
         lines.append("")
         lines.append(f"Unrecognized TIFFs (showing up to 20 of {len(scan.unrecognized_tifs)}):")

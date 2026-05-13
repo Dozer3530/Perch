@@ -25,8 +25,9 @@ _PROGRESS_FLUSH_EVERY_SEC = 0.15
 @dataclass
 class PlannedFile:
     source: Path
-    suffix: int
+    suffix: int  # -1 for misc files (no band)
     target: Path  # May be rewritten when resolving collisions.
+    kind: str = "band"  # "band" or "misc"
 
 
 @dataclass
@@ -46,6 +47,7 @@ class CollisionGroup:
 @dataclass
 class ExecutionResult:
     written: int = 0
+    misc_written: int = 0
     skipped_existing: int = 0
     failed: list[tuple[Path, str]] = field(default_factory=list)
     cancelled: bool = False
@@ -59,6 +61,7 @@ def scan_source(
     output_root: Path,
     *,
     bands: dict[int, Band] | None = None,
+    include_misc: bool = True,
     progress_cb: Callable[[int], None] | None = None,
     cancel_event: threading.Event | None = None,
 ) -> ScanResult:
@@ -79,6 +82,16 @@ def scan_source(
         ext = path.suffix.lower()
         if ext not in (".tif", ".tiff"):
             non_image.append(path)
+            if include_misc:
+                # Mirror the source-relative path under Misc/ so files from
+                # different SYNC/SET parents don't collide on common names
+                # like diag.dat or gpslog.csv.
+                try:
+                    rel = path.relative_to(source_root)
+                except ValueError:
+                    rel = Path(path.name)
+                target = output_root / "Misc" / rel
+                files.append(PlannedFile(source=path, suffix=-1, target=target, kind="misc"))
             continue
         m = FILENAME_RE.match(path.name)
         if not m:
@@ -90,7 +103,7 @@ def scan_source(
             unrecognized.append(path)
             continue
         target = output_root / band.folder / path.name
-        files.append(PlannedFile(source=path, suffix=sfx, target=target))
+        files.append(PlannedFile(source=path, suffix=sfx, target=target, kind="band"))
     if progress_cb is not None:
         progress_cb(count)
     return ScanResult(
@@ -261,7 +274,10 @@ def _aggregate(
 ) -> None:
     if status == "written":
         result.written += 1
-        result.per_band[pf.suffix] = result.per_band.get(pf.suffix, 0) + 1
+        if pf.kind == "misc":
+            result.misc_written += 1
+        else:
+            result.per_band[pf.suffix] = result.per_band.get(pf.suffix, 0) + 1
     elif status == "skipped":
         result.skipped_existing += 1
         if log_cb:
