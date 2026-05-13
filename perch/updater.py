@@ -1,4 +1,4 @@
-"""Check GitHub Releases for a newer version of Image Sorter.
+"""Check GitHub Releases for a newer version of Perch.
 
 The check runs in a background thread, fails silently on any error
 (no network, GitHub down, rate-limited, etc.), and is cached for 24h
@@ -57,7 +57,7 @@ def fetch_latest_release(timeout: float = CHECK_TIMEOUT_SEC) -> Optional[dict]:
             GITHUB_API_URL,
             headers={
                 "Accept": "application/vnd.github+json",
-                "User-Agent": f"ImageSorter/{__version__}",
+                "User-Agent": f"Perch/{__version__}",
             },
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:

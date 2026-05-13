@@ -1,5 +1,5 @@
 @echo off
-REM Build a single-file Windows EXE for Image Sorter.
+REM Build a single-file Windows EXE for Perch.
 REM Requires:  pip install -r requirements.txt -r requirements-dev.txt
 
 setlocal
@@ -12,7 +12,7 @@ if errorlevel 1 (
 )
 
 pyinstaller --noconfirm --onefile --windowed ^
-    --name "ImageSorter" ^
+    --name "Perch" ^
     --collect-all customtkinter ^
     run.py
 if errorlevel 1 (
@@ -21,6 +21,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build complete: dist\ImageSorter.exe
+echo Build complete: dist\Perch.exe
 popd
 endlocal

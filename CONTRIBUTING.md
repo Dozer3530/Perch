@@ -14,10 +14,11 @@ No build step is needed for development; the GUI runs directly from source.
 
 ## Project layout
 
-- `image_sorter/bands.py` — sensor band metadata (active preset).
-- `image_sorter/sorter.py` — pure scan / collision / parallel copy logic. No Tk imports.
-- `image_sorter/settings.py` — JSON persistence for last-used paths.
-- `image_sorter/app.py` — CustomTkinter GUI on top.
+- `perch/bands.py` — sensor band metadata (preset registry).
+- `perch/sorter.py` — pure scan / collision / parallel copy logic. No Tk imports.
+- `perch/settings.py` — JSON persistence for last-used paths (with legacy migration).
+- `perch/updater.py` — GitHub Releases auto-update check.
+- `perch/app.py` — CustomTkinter GUI on top.
 - `run.py` — entry point used by both `python run.py` and PyInstaller.
 
 The core sort logic in `sorter.py` is intentionally GUI-agnostic, so a CLI
@@ -25,10 +26,8 @@ front-end or alternative GUI can be added without touching it.
 
 ## Adding a band preset
 
-The current `BANDS` dict in `bands.py` is the RedEdge-MX Dual preset. A
-preset/profile system (dropdown + custom JSON) is on the roadmap; if you
-want to land it ahead of the maintainer, please open an issue first to
-align on the schema.
+Open `perch/bands.py`, define a new `Preset` (suffix → `Band` dict), add it
+to the `PRESETS` registry. The GUI dropdown picks it up automatically.
 
 ## Building the Windows EXE
 
@@ -36,9 +35,11 @@ align on the schema.
 build_exe.bat
 ```
 
-Output is `dist\ImageSorter.exe`. The bundled GitHub Actions workflow
+Output is `dist\Perch.exe`. The bundled GitHub Actions workflow
 (`.github/workflows/release.yml`) builds and attaches an EXE to a GitHub
-Release whenever a `v*` tag is pushed.
+Release whenever a `v*` tag is pushed. The workflow refuses to build if the
+tag doesn't match `perch.__version__` — bump the version in
+`perch/__init__.py` before tagging.
 
 ## Style
 

@@ -1,4 +1,4 @@
-"""CustomTkinter GUI for the Image Sorter."""
+"""CustomTkinter GUI for Perch."""
 from __future__ import annotations
 
 import os
@@ -29,7 +29,7 @@ from .sorter import (
     scan_source,
 )
 
-APP_TITLE = "Image Sorter"
+APP_TITLE = "Perch"
 DEFAULT_WORKERS = 4
 WORKER_MIN, WORKER_MAX = 1, 16
 WORKER_CHOICES = ("1", "2", "4", "6", "8", "12", "16")

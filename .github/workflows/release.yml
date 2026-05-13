@@ -26,15 +26,15 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          $content = Get-Content image_sorter/__init__.py -Raw
+          $content = Get-Content perch/__init__.py -Raw
           if ($content -match '__version__\s*=\s*"([^"]+)"') {
             $version = "v" + $matches[1]
             if ($tag -ne $version) {
-              throw "Tag $tag does not match image_sorter.__version__ ($version). Bump __version__ before tagging."
+              throw "Tag $tag does not match perch.__version__ ($version). Bump __version__ before tagging."
             }
             Write-Host "OK: tag $tag matches __version__ $version"
           } else {
-            throw "Could not find __version__ in image_sorter/__init__.py"
+            throw "Could not find __version__ in perch/__init__.py"
           }
 
       - name: Install dependencies
@@ -46,19 +46,19 @@ jobs:
       - name: Build EXE
         run: |
           pyinstaller --noconfirm --onefile --windowed `
-            --name "ImageSorter" `
+            --name "Perch" `
             --collect-all customtkinter `
             run.py
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ImageSorter-windows
-          path: dist/ImageSorter.exe
+          name: Perch-windows
+          path: dist/Perch.exe
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ImageSorter.exe
+          files: dist/Perch.exe
           generate_release_notes: true

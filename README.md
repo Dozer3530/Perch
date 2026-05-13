@@ -1,20 +1,19 @@
-# Image Sorter
+# Perch
 
 [![Build & Release Windows EXE](https://github.com/Dozer3530/Perch/actions/workflows/release.yml/badge.svg)](https://github.com/Dozer3530/Perch/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A Windows GUI for reorganizing multi-band drone imagery into a flat,
-band-per-folder layout. It walks a source flight folder, identifies each TIFF
-by its filename suffix, and copies (or moves) it into the matching band folder
-under a destination of your choosing.
+band-per-folder layout. Point it at a flight folder, pick a sensor preset, and
+every TIFF lands in the matching band folder under a destination you choose.
 
 Two sensor presets are built in: **MicaSense RedEdge-MX Dual** and
-**MicaSense Altum-PT**. Pick from the dropdown at the top of the Input card.
-More presets (single-camera RedEdge-MX, custom JSON) are on the roadmap.
+**MicaSense Altum-PT**. More presets (single-camera RedEdge-MX, custom JSON)
+are on the roadmap.
 
 ## Download
 
-Grab the latest `ImageSorter.exe` from the [Releases](https://github.com/Dozer3530/Perch/releases) page.
+Grab the latest `Perch.exe` from the [Releases](https://github.com/Dozer3530/Perch/releases) page.
 Single file, no installer, no Python required on the target machine.
 
 ## Preset 1 — MicaSense RedEdge-MX Dual
@@ -63,6 +62,7 @@ between launches.
   02_Green_560\        IMG_2400_2.tif  ...
   ...
   10_RedEdge_740\      IMG_2400_10.tif ...
+  Misc\                everything that isn't a band TIFF, mirrored
   sort_log_<timestamp>.txt
 ```
 
@@ -91,8 +91,9 @@ The output folder name is whatever you type — no forced prefix.
 - Live progress with files/sec and ETA.
 - Cancel button works mid-run, even with parallel workers.
 - Per-band file counts and a full log written into the output folder.
-- Source / destination / worker count / appearance remembered between runs
-  (stored at `%LOCALAPPDATA%\ImageSorter\settings.json`).
+- Source / destination / worker count / preset / appearance remembered
+  between runs (stored at `%LOCALAPPDATA%\Perch\settings.json`; pre-v0.7
+  settings under `ImageSorter\` are migrated forward on first launch).
 - "Open output folder" button after a successful run.
 
 ## Run from source
@@ -113,15 +114,18 @@ pip install -r requirements.txt -r requirements-dev.txt
 build_exe.bat
 ```
 
-Output: `dist\ImageSorter.exe`.
+Output: `dist\Perch.exe`.
 
 You can also push a `v*` tag to GitHub — the bundled workflow builds the EXE
 on `windows-latest` and attaches it to a GitHub Release automatically:
 
 ```
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
+
+The workflow refuses to build when the git tag doesn't match
+`perch.__version__`, preventing version drift between source and releases.
 
 ## Tuning copy workers
 
@@ -138,12 +142,13 @@ Change the count any time from the **Run** card in the GUI.
 ## Project layout
 
 ```
-image_sorter/
-  __init__.py
-  __main__.py        # `python -m image_sorter`
-  bands.py           # suffix -> band metadata (active preset)
+perch/
+  __init__.py        # version
+  __main__.py        # `python -m perch`
+  bands.py           # suffix -> band metadata (preset registry)
   sorter.py          # scan / collision / parallel copy-move (Tk-free)
-  settings.py        # tiny JSON persistence
+  settings.py        # tiny JSON persistence with legacy migration
+  updater.py         # GitHub Releases auto-update check
   app.py             # CustomTkinter GUI
 run.py               # entry point for source + PyInstaller
 run.bat              # convenience launcher
