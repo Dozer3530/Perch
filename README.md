@@ -1,6 +1,6 @@
 # Image Sorter
 
-[![Build & Release Windows EXE](https://github.com/Dozer3530/The-Drone-Image-Sorter/actions/workflows/release.yml/badge.svg)](https://github.com/Dozer3530/The-Drone-Image-Sorter/actions/workflows/release.yml)
+[![Build & Release Windows EXE](https://github.com/Dozer3530/Perch/actions/workflows/release.yml/badge.svg)](https://github.com/Dozer3530/Perch/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A Windows GUI for reorganizing multi-band drone imagery into a flat,
@@ -14,7 +14,7 @@ More presets (single-camera RedEdge-MX, custom JSON) are on the roadmap.
 
 ## Download
 
-Grab the latest `ImageSorter.exe` from the [Releases](https://github.com/Dozer3530/The-Drone-Image-Sorter/releases) page.
+Grab the latest `ImageSorter.exe` from the [Releases](https://github.com/Dozer3530/Perch/releases) page.
 Single file, no installer, no Python required on the target machine.
 
 ## Preset 1 — MicaSense RedEdge-MX Dual
