@@ -1,0 +1,86 @@
+name: Bug report
+description: Something in Perch isn't working as expected.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The more concrete the
+        report, the faster it can be fixed.
+
+  - type: input
+    id: version
+    attributes:
+      label: Perch version
+      description: Shown in the window title or in `perch/__init__.py`. Or the tag of the EXE you downloaded.
+      placeholder: "e.g. v0.8.1"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Windows 10, Windows 11, Windows Server 2022, etc.
+      placeholder: "e.g. Windows 11 23H2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: preset
+    attributes:
+      label: Sensor preset in use
+      options:
+        - MicaSense RedEdge-MX Dual
+        - MicaSense Altum-PT
+        - Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source-dest
+    attributes:
+      label: Source and destination drives
+      description: This often matters for performance / locking issues.
+      options:
+        - Same drive (both local)
+        - Different local drives
+        - SD card / USB → local
+        - Network share → local
+        - Local → network share
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see instead?
+      placeholder: |
+        1. Picked source folder X
+        2. Clicked Scan & Sort
+        3. Expected ___ but got ___
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log output
+      description: |
+        Paste the contents of the `sort_log_*.txt` file from the output
+        folder, or the text from the in-app Log panel. Trim long sections
+        if needed but include the start and the error.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images into this field to attach them. Optional but very helpful for UI bugs.
+    validations:
+      required: false
